@@ -64,24 +64,29 @@ def find_fiducials(gray: np.ndarray) -> list[tuple[float, float]] | None:
     Detect all 4 fiducial marks in the scan.
     Returns [(TL), (TR), (BL), (BR)] pixel centers, or None if any are missing.
 
-    Searches in 20% corner regions and picks the circle closest to each
-    corner vertex (fiducials live in the margin; bubbles are further inward).
+    For each mark, estimates its expected pixel position from FIDUCIAL_MM assuming
+    the scan is approximately A4 (210×297 mm), then searches in a ±12% window and
+    picks the circle closest to that estimated center.  This avoids confusing the
+    fiducial with other circles (e.g. logos) that happen to be near the corner.
     """
     h, w = gray.shape
-    mx = int(w * 0.20)
-    my = int(h * 0.20)
-
-    # (x1, y1, x2, y2,  corner in ROI-local coords)
-    regions = [
-        (0,      0,      mx,  my,  (0,    0)),     # TL → corner at (0,0)
-        (w - mx, 0,      w,   my,  (mx,   0)),     # TR → corner at (w_roi, 0)
-        (0,      h - my, mx,  h,   (0,    my)),    # BL → corner at (0, h_roi)
-        (w - mx, h - my, w,   h,   (mx,   my)),    # BR → corner at (w_roi, h_roi)
-    ]
+    margin_x = int(w * 0.12)
+    margin_y = int(h * 0.12)
 
     centers: list[tuple[float, float]] = []
-    for x1, y1, x2, y2, corner_xy in regions:
-        pt = _find_fiducial_in_region(gray, x1, y1, x2, y2, corner_xy)
+    for fx_mm, fy_mm in FIDUCIAL_MM:
+        ex = int(fx_mm / 210.0 * w)
+        ey = int(fy_mm / 297.0 * h)
+
+        x1 = max(0, ex - margin_x)
+        x2 = min(w, ex + margin_x)
+        y1 = max(0, ey - margin_y)
+        y2 = min(h, ey + margin_y)
+
+        # Reference = expected center expressed in ROI-local coordinates
+        ref_in_roi = (ex - x1, ey - y1)
+
+        pt = _find_fiducial_in_region(gray, x1, y1, x2, y2, ref_in_roi)
         if pt is None:
             return None
         centers.append(pt)
