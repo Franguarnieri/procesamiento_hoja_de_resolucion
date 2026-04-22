@@ -18,8 +18,8 @@ NORMALIZED_H = 1700
 #   Setting cap to 12 px gives uniform 12 px across all sections.
 # ---------------------------------------------------------------------------
 FILL_THRESHOLD = 0.40
-BUBBLE_RADIUS_FRAC = 0.42   # must be >= 12.0/28.8 so even the tightest column gap caps at MAX
-MAX_BUBBLE_RADIUS = 12.0
+BUBBLE_RADIUS_FRAC = 0.42   # must be >= 9.0/42.86 so even the tightest column gap caps at MAX
+MAX_BUBBLE_RADIUS = 9.0
 
 # ---------------------------------------------------------------------------
 # ID type selector – which identification method is used on this sheet.
