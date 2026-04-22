@@ -121,3 +121,15 @@ RESPUESTAS_CONFIG = {
         "cols": [114.5 / 210, 124.5 / 210, 134.5 / 210, 144.5 / 210, 154.5 / 210],
     },
 }
+
+# ---------------------------------------------------------------------------
+# Fiducial / registration marks – ⊕ symbols printed at 4 known positions.
+# Coordinates in mm (jsPDF origin, top-left of A4 page).
+# Order: [top-left, top-right, bottom-left, bottom-right]
+# ---------------------------------------------------------------------------
+FIDUCIAL_MM = [
+    (15.0,  29.0),   # F1 – top-left
+    (195.0, 29.0),   # F2 – top-right
+    (15.0,  288.0),  # F3 – bottom-left
+    (195.0, 288.0),  # F4 – bottom-right
+]

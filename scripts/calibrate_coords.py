@@ -25,6 +25,7 @@ from app.config import (
     CURSO_CONFIG,
     CURSO_TYPES,
     FECHA_CONFIG,
+    FIDUCIAL_MM,
     DNI_CONFIG,
     FILL_THRESHOLD,
     MAX_BUBBLE_RADIUS,
@@ -35,7 +36,7 @@ from app.config import (
 )
 from app.preprocessing.loader import load_image
 from app.preprocessing.normalizer import adaptive_threshold, to_grayscale
-from app.preprocessing.perspective import correct_perspective
+from app.preprocessing.perspective import correct_perspective, find_fiducials
 from app.extractors.bubble import sample_bubble
 
 
@@ -71,6 +72,17 @@ def main() -> None:
 
     img = load_image(raw)
     gray = to_grayscale(img)
+
+    # ── Fiducial detection (on original scan, before warp) ────────────────────
+    print("\n=== FIDUCIALS ===")
+    fiducials = find_fiducials(gray)
+    if fiducials is not None:
+        labels = ["F1 (TL)", "F2 (TR)", "F3 (BL)", "F4 (BR)"]
+        for lbl, (cx, cy), (fx, fy) in zip(labels, fiducials, FIDUCIAL_MM):
+            print(f"  {lbl}: detected pixel=({int(cx)},{int(cy)})  expected mm=({fx},{fy})")
+    else:
+        print("  WARNING: no fiducials detected — warp will use fallback method")
+
     warped_gray, warnings = correct_perspective(gray)
     thresh = adaptive_threshold(warped_gray)
 
@@ -78,6 +90,15 @@ def main() -> None:
         print("Pipeline warnings:", warnings)
 
     overlay = cv2.cvtColor(warped_gray, cv2.COLOR_GRAY2BGR)
+
+    # ── Draw expected fiducial positions on warped canvas ─────────────────────
+    print("\n=== EXPECTED FIDUCIAL POSITIONS ON CANVAS ===")
+    for (fx, fy), lbl in zip(FIDUCIAL_MM, ["F1", "F2", "F3", "F4"]):
+        cx = int(fx / 210 * NORMALIZED_W)
+        cy = int(fy / 297 * NORMALIZED_H)
+        cv2.circle(overlay, (cx, cy), 14, (255, 0, 255), 2)   # magenta
+        cv2.drawMarker(overlay, (cx, cy), (255, 0, 255), cv2.MARKER_CROSS, 20, 2)
+        print(f"  {lbl}: canvas=({cx},{cy})")
 
     # ── DNI ──────────────────────────────────────────────────────────────────
     print("\n=== DNI ===")
