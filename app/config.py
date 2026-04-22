@@ -34,12 +34,14 @@ ID_SELECTOR_CONFIG = {
 
 # ---------------------------------------------------------------------------
 # DNI / Nro de Control digits
-# Exact coordinates not yet provided — these are placeholder estimates.
-# Calibrate with scripts/calibrate_coords.py once the digit layout is known.
+# Source (mm): D1 y=47.5 … D8 y=89.5, row gap=6.0 mm
+#              col0 x=22.0, gap=7.5 mm (identical to Curso digit cols)
 # ---------------------------------------------------------------------------
 DNI_CONFIG = {
-    "rows": [0.125, 0.147, 0.169, 0.191, 0.213, 0.235, 0.257, 0.279],
-    "cols": [0.042, 0.066, 0.090, 0.114, 0.138, 0.162, 0.186, 0.210, 0.234, 0.258],
+    "rows": [47.5/297, 53.5/297, 59.5/297, 65.5/297,
+             71.5/297, 77.5/297, 83.5/297, 89.5/297],
+    "cols": [22.0/210, 29.5/210, 37.0/210, 44.5/210, 52.0/210,
+             59.5/210, 67.0/210, 74.5/210, 82.0/210, 89.5/210],
     "digits": list(range(10)),
 }
 
