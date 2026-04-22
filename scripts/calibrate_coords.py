@@ -76,12 +76,24 @@ def main() -> None:
     # ── Fiducial detection (on original scan, before warp) ────────────────────
     print("\n=== FIDUCIALS ===")
     fiducials = find_fiducials(gray)
+
+    # Save pre-warp debug image so we can verify which circles were detected
+    pre_warp_debug = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
     if fiducials is not None:
-        labels = ["F1 (TL)", "F2 (TR)", "F3 (BL)", "F4 (BR)"]
-        for lbl, (cx, cy), (fx, fy) in zip(labels, fiducials, FIDUCIAL_MM):
+        labels_fid = ["F1 (TL)", "F2 (TR)", "F3 (BL)", "F4 (BR)"]
+        for lbl, (cx, cy), (fx, fy) in zip(labels_fid, fiducials, FIDUCIAL_MM):
             print(f"  {lbl}: detected pixel=({int(cx)},{int(cy)})  expected mm=({fx},{fy})")
+            cv2.circle(pre_warp_debug, (int(cx), int(cy)), 20, (255, 0, 255), 3)
+            cv2.drawMarker(pre_warp_debug, (int(cx), int(cy)), (255, 0, 255),
+                           cv2.MARKER_CROSS, 30, 2)
+            cv2.putText(pre_warp_debug, lbl, (int(cx) + 25, int(cy)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 0, 255), 2)
     else:
         print("  WARNING: no fiducials detected — warp will use fallback method")
+
+    pre_warp_path = output_path.replace(".png", "_prewarp.png")
+    cv2.imwrite(pre_warp_path, pre_warp_debug)
+    print(f"Pre-warp debug saved → {pre_warp_path}  (check that magenta ⊕ land on the registration marks)")
 
     warped_gray, warnings = correct_perspective(gray)
     thresh = adaptive_threshold(warped_gray)

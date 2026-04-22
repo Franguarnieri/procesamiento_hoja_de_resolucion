@@ -21,9 +21,16 @@ def _order_corners(pts: np.ndarray) -> np.ndarray:
 
 
 def _find_fiducial_in_region(
-    gray: np.ndarray, x1: int, y1: int, x2: int, y2: int
+    gray: np.ndarray,
+    x1: int, y1: int, x2: int, y2: int,
+    corner_xy: tuple[int, int],
 ) -> tuple[float, float] | None:
-    """Detect the center of a circular fiducial mark within the given ROI."""
+    """
+    Detect the fiducial mark center within the ROI [x1:x2, y1:y2].
+    When multiple circles are found, returns the one closest to corner_xy
+    (expressed in ROI-local coordinates), so we always pick the mark that
+    is deepest into the corner rather than a form bubble.
+    """
     roi = gray[y1:y2, x1:x2]
     h_roi, w_roi = roi.shape
 
@@ -35,7 +42,7 @@ def _find_fiducial_in_region(
         blurred,
         cv2.HOUGH_GRADIENT,
         dp=1,
-        minDist=min_r * 3,
+        minDist=min_r * 2,
         param1=50,
         param2=18,
         minRadius=min_r,
@@ -44,29 +51,37 @@ def _find_fiducial_in_region(
     if circles is None:
         return None
 
-    cx = int(np.round(circles[0, 0, 0])) + x1
-    cy = int(np.round(circles[0, 0, 1])) + y1
-    return float(cx), float(cy)
+    cx_ref, cy_ref = corner_xy
+    best = min(
+        circles[0],
+        key=lambda c: (c[0] - cx_ref) ** 2 + (c[1] - cy_ref) ** 2,
+    )
+    return float(int(np.round(best[0])) + x1), float(int(np.round(best[1])) + y1)
 
 
 def find_fiducials(gray: np.ndarray) -> list[tuple[float, float]] | None:
     """
     Detect all 4 fiducial marks in the scan.
     Returns [(TL), (TR), (BL), (BR)] pixel centers, or None if any are missing.
+
+    Searches in 20% corner regions and picks the circle closest to each
+    corner vertex (fiducials live in the margin; bubbles are further inward).
     """
     h, w = gray.shape
-    mx, my = w // 4, h // 4  # 25% margin per corner
+    mx = int(w * 0.20)
+    my = int(h * 0.20)
 
+    # (x1, y1, x2, y2,  corner in ROI-local coords)
     regions = [
-        (0,      0,      mx,  my),   # TL
-        (w - mx, 0,      w,   my),   # TR
-        (0,      h - my, mx,  h),    # BL
-        (w - mx, h - my, w,   h),    # BR
+        (0,      0,      mx,  my,  (0,    0)),     # TL → corner at (0,0)
+        (w - mx, 0,      w,   my,  (mx,   0)),     # TR → corner at (w_roi, 0)
+        (0,      h - my, mx,  h,   (0,    my)),    # BL → corner at (0, h_roi)
+        (w - mx, h - my, w,   h,   (mx,   my)),    # BR → corner at (w_roi, h_roi)
     ]
 
     centers: list[tuple[float, float]] = []
-    for x1, y1, x2, y2 in regions:
-        pt = _find_fiducial_in_region(gray, x1, y1, x2, y2)
+    for x1, y1, x2, y2, corner_xy in regions:
+        pt = _find_fiducial_in_region(gray, x1, y1, x2, y2, corner_xy)
         if pt is None:
             return None
         centers.append(pt)
@@ -91,7 +106,7 @@ def correct_perspective(gray: np.ndarray) -> tuple[np.ndarray, list[str]]:
     # ── 1. Fiducial-based warp ────────────────────────────────────────────────
     fiducials = find_fiducials(gray)
     if fiducials is not None:
-        src = np.array(fiducials, dtype=np.float32)          # detected pixels [TL,TR,BL,BR]
+        src = np.array(fiducials, dtype=np.float32)
         dst = np.array(
             [[fx / 210 * NORMALIZED_W, fy / 297 * NORMALIZED_H] for fx, fy in FIDUCIAL_MM],
             dtype=np.float32,
