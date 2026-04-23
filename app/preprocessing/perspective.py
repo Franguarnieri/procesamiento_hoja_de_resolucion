@@ -94,21 +94,49 @@ def find_fiducials(gray: np.ndarray) -> list[tuple[float, float]] | None:
     return centers  # [TL, TR, BL, BR]
 
 
+def _contour_warp(gray: np.ndarray) -> np.ndarray | None:
+    """Rough perspective correction using the largest page contour. Returns None if not found."""
+    h, w = gray.shape[:2]
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    _, page_mask = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
+    closed = cv2.morphologyEx(page_mask, cv2.MORPH_CLOSE, kernel)
+    contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None
+    largest = max(contours, key=cv2.contourArea)
+    if cv2.contourArea(largest) <= 0.80 * h * w:
+        return None
+    peri = cv2.arcLength(largest, True)
+    approx = cv2.approxPolyDP(largest, 0.02 * peri, True)
+    if len(approx) != 4:
+        return None
+    corners = _order_corners(approx)
+    dst = np.array(
+        [[0, 0], [NORMALIZED_W - 1, 0],
+         [NORMALIZED_W - 1, NORMALIZED_H - 1], [0, NORMALIZED_H - 1]],
+        dtype=np.float32,
+    )
+    M = cv2.getPerspectiveTransform(corners, dst)
+    return cv2.warpPerspective(gray, M, (NORMALIZED_W, NORMALIZED_H))
+
+
 def correct_perspective(gray: np.ndarray) -> tuple[np.ndarray, list[str]]:
     """
     Warp the scan to a fixed NORMALIZED_W × NORMALIZED_H canvas.
 
     Priority:
-      1. Fiducial-based warp  – most accurate, requires ⊕ marks on the form.
-      2. Page-contour warp    – fallback when no fiducials found.
-      3. Plain resize         – last resort.
+      1. Fiducial-based warp (direct)       – flat scans; ⊕ marks appear as circles.
+      2. Contour pre-warp → fiducial warp   – camera photos; after rough correction,
+                                              ellipse-distorted marks become circles.
+      3. Contour warp alone                 – no fiducials found even after pre-warp.
+      4. Plain resize                       – last resort.
 
     Returns (warped_gray, warnings).
     """
     warnings: list[str] = []
-    h, w = gray.shape[:2]
 
-    # ── 1. Fiducial-based warp ────────────────────────────────────────────────
+    # ── 1. Direct fiducial warp ───────────────────────────────────────────────
     fiducials = find_fiducials(gray)
     if fiducials is not None:
         src = np.array(fiducials, dtype=np.float32)
@@ -117,39 +145,28 @@ def correct_perspective(gray: np.ndarray) -> tuple[np.ndarray, list[str]]:
             dtype=np.float32,
         )
         M = cv2.getPerspectiveTransform(src, dst)
-        warped = cv2.warpPerspective(gray, M, (NORMALIZED_W, NORMALIZED_H))
-        return warped, warnings
+        return cv2.warpPerspective(gray, M, (NORMALIZED_W, NORMALIZED_H)), warnings
 
-    warnings.append("fiducials_not_found: falling back to page-contour detection")
+    warnings.append("fiducials_not_found: attempting contour pre-correction")
 
-    # ── 2. Page-contour warp ──────────────────────────────────────────────────
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    _, page_mask = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
-    closed = cv2.morphologyEx(page_mask, cv2.MORPH_CLOSE, kernel)
-    contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # ── 2. Contour pre-warp → retry fiducials ────────────────────────────────
+    roughly_warped = _contour_warp(gray)
+    if roughly_warped is not None:
+        fiducials2 = find_fiducials(roughly_warped)
+        if fiducials2 is not None:
+            warnings[-1] = "fiducials_found_after_contour_pre_warp"
+            src = np.array(fiducials2, dtype=np.float32)
+            dst = np.array(
+                [[fx / 210 * NORMALIZED_W, fy / 297 * NORMALIZED_H] for fx, fy in FIDUCIAL_MM],
+                dtype=np.float32,
+            )
+            M = cv2.getPerspectiveTransform(src, dst)
+            return cv2.warpPerspective(roughly_warped, M, (NORMALIZED_W, NORMALIZED_H)), warnings
 
-    if contours:
-        largest = max(contours, key=cv2.contourArea)
-        if cv2.contourArea(largest) > 0.80 * h * w:
-            peri = cv2.arcLength(largest, True)
-            approx = cv2.approxPolyDP(largest, 0.02 * peri, True)
-            if len(approx) == 4:
-                corners = _order_corners(approx)
-                dst = np.array(
-                    [
-                        [0, 0],
-                        [NORMALIZED_W - 1, 0],
-                        [NORMALIZED_W - 1, NORMALIZED_H - 1],
-                        [0, NORMALIZED_H - 1],
-                    ],
-                    dtype=np.float32,
-                )
-                M = cv2.getPerspectiveTransform(corners, dst)
-                warped = cv2.warpPerspective(gray, M, (NORMALIZED_W, NORMALIZED_H))
-                return warped, warnings
+        # ── 3. Contour warp alone ─────────────────────────────────────────────
+        warnings.append("fiducials_not_found_after_contour_pre_warp: using contour warp only")
+        return roughly_warped, warnings
 
-    # ── 3. Plain resize ───────────────────────────────────────────────────────
+    # ── 4. Plain resize ───────────────────────────────────────────────────────
     warnings.append("perspective_correction_skipped: resizing to normalized canvas")
-    resized = cv2.resize(gray, (NORMALIZED_W, NORMALIZED_H))
-    return resized, warnings
+    return cv2.resize(gray, (NORMALIZED_W, NORMALIZED_H)), warnings
