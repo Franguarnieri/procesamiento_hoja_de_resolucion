@@ -28,6 +28,7 @@ from app.config import (
     FIDUCIAL_MM,
     DNI_CONFIG,
     FILL_THRESHOLD,
+    ID_SELECTOR_CONFIG,
     MAX_BUBBLE_RADIUS,
     MONTHS,
     NORMALIZED_W,
@@ -111,6 +112,12 @@ def main() -> None:
         cv2.circle(overlay, (cx, cy), 14, (255, 0, 255), 2)   # magenta
         cv2.drawMarker(overlay, (cx, cy), (255, 0, 255), cv2.MARKER_CROSS, 20, 2)
         print(f"  {lbl}: canvas=({cx},{cy})")
+
+    # ── ID Selector (DNI / Nro de Control) ───────────────────────────────────
+    print("\n=== ID SELECTOR ===")
+    r_sel = _col_radius(ID_SELECTOR_CONFIG["cols"])
+    for lbl, col_x in zip(ID_SELECTOR_CONFIG["labels"], ID_SELECTOR_CONFIG["cols"]):
+        _draw(overlay, thresh, f"ID {lbl}", col_x, ID_SELECTOR_CONFIG["row"], r_sel)
 
     # ── DNI ──────────────────────────────────────────────────────────────────
     print("\n=== DNI ===")
